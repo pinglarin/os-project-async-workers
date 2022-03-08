@@ -8,6 +8,8 @@ producer_consumer_works
 rwlock
 throttle
 zemaphore
+producer_consumer_2
+producer_consumer_works_Dragon
 
 binary.o
 dining_philosophers_deadlock.o
@@ -19,3 +21,5 @@ producer_consumer_works.o
 rwlock.o
 throttle.o
 zemaphore.o
+producer_consumer_2.o
+producer_consumer_works_Dragon.o

@@ -92,8 +92,8 @@ int main(int argc, char *argv[]) {
     // loops = atoi(argv[2]);
     // consumers = atoi(argv[3]);//Use 3 then + 1 on line 81
 
-    int processes = 1;   
-    int devices = 1;
+    // int processes = 1;   
+    // int devices = 1;
 
     assert(consumers <= CMAX);
 
@@ -114,12 +114,13 @@ int main(int argc, char *argv[]) {
 
     //Keep pthred value on Customer and producer
     pthread_t pid, cid[CMAX];
-    int Max = 500, Min = 100; Count = 5;
+    // int Max = 500, Min = 100;
+    int Count = 5;
 
-    for (int i = 0; i < count; i++)
+    for (int i = 0; i < Count; i++)
     {
-      int num = (rand() % (upper - lower + 1)) + lower;
-      delay(num);
+    //   int num = (rand() % (Max - Min + 1)) + Min;
+    //   delay(num);
       Pthread_create(&pid, NULL, producer, NULL);       
     }
     

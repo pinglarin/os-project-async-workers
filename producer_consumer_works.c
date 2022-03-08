@@ -79,7 +79,7 @@ void *consumer(void *arg) {
 
 int main(int argc, char *argv[]) {
     if (argc != 4) {
-	fprintf(stderr, "usage: %s <buffersize> <loops> <consumers>\n", argv[0]);
+	fprintf(stderr, "usage: %s <nprocess> <ndevice> <buffersize> <loops> <consumers>\n", argv[0]);
 	exit(1);
     }
     max   = atoi(argv[1]);
