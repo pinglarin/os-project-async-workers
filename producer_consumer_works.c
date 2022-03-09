@@ -42,6 +42,11 @@ int do_get() {
     return tmp;
 }
 
+int random_int(int min, int max)
+{
+   return min + rand() % (max+1 - min);
+}
+
 void *producer(void *arg) {
     int i;
     for (i = 0; i < loops; i++) {

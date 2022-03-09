@@ -10,6 +10,9 @@ throttle
 zemaphore
 producer_consumer_2
 producer_consumer_works_Dragon
+backup
+queue
+test
 
 binary.o
 dining_philosophers_deadlock.o
@@ -23,3 +26,6 @@ throttle.o
 zemaphore.o
 producer_consumer_2.o
 producer_consumer_works_Dragon.o
+backup.o
+queue.o
+test.o

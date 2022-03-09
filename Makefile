@@ -18,7 +18,10 @@ SRCS   := dining_philosophers_deadlock.c \
 	zemaphore.c \
 	throttle.c \
 	producer_consumer_2.c \
-	producer_consumer_works_Dragon.c
+	producer_consumer_works_Dragon.c \
+	queue.c \
+	test.c \
+	backup.c
 
 OBJS   := ${SRCS:c=o}
 PROGS  := ${SRCS:.c=}
