@@ -24,7 +24,7 @@ int fill = 0;
 
 sem_t empty;
 sem_t full;
-sem_t mutex;
+pthread_mutex_t mutex;
 
 int Max_DelayTime = 400;
 int Min_DelayTime = 200;
@@ -35,18 +35,18 @@ int Min_DelayTime = 200;
 //int consumers = 1;
 
 //Use to set value in buffer
-void do_fill(int value) {
-    printf("Check do_fill\n");
+void do_fill(int value) {    
     buffer[fill] = value;
+    printf("Check do_fill in slot: %d\n",fill);
     fill++;
     if (fill == max) //When full go back to 0
 	fill = 0;
 }
 
 //Used to bring value out from buffer
-int do_get() {
-    printf("Check do_get\n");
+int do_get() {    
     int tmp = buffer[use];
+    printf("Check do_get in slot: %d\n",use);
     use++;
     if (use == max)
 	use = 0;
@@ -56,28 +56,32 @@ int do_get() {
 void *producer(void *arg) {
     int i;
     int Max = 500, Min = 100, devices = 1;     
-    for (i = 0; i < loops; i++) {
+    for (i = 0; i < devices; i++) {
 
-        printf("producer Checking round: %d \n",i);
+        printf("Producer Checking round: %d \n",i);
 
         int num = (rand() % (Max - Min + 1)) + Min; // Random time range (100-500)
-        usleep(num); //Like Delay but better
-
+        printf("Number of Random Time in  on range producer[%d , %d]: %d\n",Max, Min,num);
+        usleep(num); //Like Delay but better        
 
         Sem_wait(&empty); //When empty is Max  = 4 [-- empty]
-        Sem_wait(&mutex); //Use Critical region to call request by change mutex = 0 [-- mutex]
+        pthread_mutex_lock(&mutex); //Use Critical region to call request by change mutex = 0 [-- mutex]
+
         do_fill(i);//Create Request
-        Sem_post(&mutex);// ++ mutex (use to exit Critical region)
+
+        pthread_mutex_unlock(&mutex);// ++ mutex (use to exit Critical region)
         Sem_post(&full);// ++ full
     }
 
     // end case [To stop do_fill stop fucking loop in line 34]
     for (i = 0; i < devices; i++) {
-        printf("Stopper\n");
+        printf("Stopper on \n");
         Sem_wait(&empty);
-        Sem_wait(&mutex);
+        pthread_mutex_lock(&mutex);
+
         do_fill(-1); //When do-
-        Sem_post(&mutex);
+
+        pthread_mutex_unlock(&mutex);
         Sem_post(&full);
     }
 
@@ -89,13 +93,17 @@ void *consumer(void *arg) {
     int i =0;
     while (tmp != -1) {
 
-        printf("consumer Checking round: %d \n",i);
+        printf("Consumer Checking round: %d \n",i);
         int num = (rand() % (Max_DelayTime - Min_DelayTime + 1)) + Min_DelayTime; // Random time range (100-500)
         usleep(num); //Like Delay but better        
+        printf("Number of Random Time in  on range consumer[%d , %d]: %d\n",Max_DelayTime , Min_DelayTime,num);
+
         Sem_wait(&full);//When full is Max  = 4 [-- full]
-        Sem_wait(&mutex);//Use Critical region to call request by change mutex = 0 [-- mutex]
+        pthread_mutex_lock(&mutex);//Use Critical region to call request by change mutex = 0 [-- mutex]
+
         tmp = do_get(); //Send out value in buffer
-        Sem_post(&mutex);// ++ mutex (use to exit Critical region)
+
+        pthread_mutex_unlock(&mutex);// ++ mutex (use to exit Critical region)
         Sem_post(&empty);// ++ empty
         printf("%lld %d\n", (long long int) arg, tmp);//Try to print
         i++;
@@ -112,7 +120,7 @@ int main(int argc, char *argv[]) {
     // loops = atoi(argv[2]);
     // consumers = atoi(argv[3]);//Use 3 then + 1 on line 81
 
-    int processes = 1;   
+    int processes = 2;   
     int devices = 1;
 
     
@@ -131,12 +139,12 @@ int main(int argc, char *argv[]) {
     //Set up value
     Sem_init(&empty, max); // max are empty 
     Sem_init(&full, 0);    // 0 are full
-    Sem_init(&mutex, 1);   // mutex (Critical region)
+    //Sem_init(&mutex, 1);   // mutex (Critical region).
+    pthread_mutex_init(&mutex,NULL);
 
 
     //Keep pthred value on Customer and producer
-    pthread_t pid[CMAX], cid[CMAX];
-      
+    pthread_t pid[processes], cid[devices];    
 
     for (int i = 0; i < processes; i++)//Added
     {     
@@ -157,6 +165,9 @@ int main(int argc, char *argv[]) {
     }
     return 0;
 }
+
+
+
 
 //gcc -Wall -Werror -I../include -pthread -o out producer_consumer_works_Dragon.c
 //./out
