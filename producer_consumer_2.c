@@ -50,7 +50,7 @@ void *producer_wait(void * id_ptr) {
     struct timeval start;
     
     while (currRequest < nrequest) {
-        // printf("%d %d %d\n", ID, currRequest, nrequest);
+        printf("%d %d %d\n", ID, currRequest, nrequest);
         currRequest++;
         sem_wait(empty);
         // (void) sem_wait(mutex);
@@ -73,10 +73,12 @@ void *producer_wait(void * id_ptr) {
         enqueue(&head, nextProduced);
         enqueue(&timeArrive, start.tv_sec);
         nHead++;
-        // printf("*%d %d %d\n", ID, currRequest, nrequest);
-        /* Looks like we are OK */
         buffer[in] = nextProduced;
-        printf("queue: %d\n", nHead);
+        printf("*%d %d %d %d %d\n", ID, currRequest, nrequest, buffer[in], nextProduced);
+        /* Looks like we are OK */
+        
+        // printf("ID: %d, curr: %d, buffer: %d\n", ID, currRequest, buffer[in]);
+        // printf("queue: %d\n", nHead);
         printf("Process %d has issued a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
         in = (in + 1) % BUFFER_SIZE;
         
@@ -194,7 +196,8 @@ void *consumer (void *id_ptr) {
     struct timeval stop;
     
     while (finRequest < nrequest) {
-        printf("\t%d %d %d %d\n", ID, currRequest, nrequest, buffer[ID]);
+        printf("\t%d %d %d %d\n", ID, finRequest, nrequest, buffer[ID]);
+        finRequest++;
         if (buffer[ID] == 0) {
             break;
         }
@@ -223,7 +226,7 @@ void *consumer (void *id_ptr) {
         printf("\tDevice %d Just finished request %d from slot %d, stop: %ld\n", ID, nextConsumed, out, stop.tv_sec);
         buffer[out] = -1;
         out = (out + 1) % BUFFER_SIZE;
-        finRequest++;
+        
         // printf("incremented out!\n");
 
         pthread_mutex_unlock(&mutex);
@@ -334,7 +337,7 @@ int main() {
     clock_t tEnd = clock();
     double time_taken = (tEnd-t)/1000.0;//((double)t)/CLOCKS_PER_SEC;
     // printf("The program took %llu milliseconds to execute", delta_us);
-    printf("Total elapsed time: %f seconds", time_taken); //totalStart.tv_usec-totalEnd.tv_usec
+    printf("\nTotal elapsed time: %f seconds", time_taken); //totalStart.tv_usec-totalEnd.tv_usec
     
 
     // print_list(head, '-');
