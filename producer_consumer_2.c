@@ -6,6 +6,9 @@
 #include <unistd.h>
 #include <sys/time.h>
 // #include <windows.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 // #define MAX_THREADS 5
 #define BUFFER_SIZE 10
@@ -18,6 +21,7 @@ double secs = 0;
 int buffer[BUFFER_SIZE];
 int in = 0, out = 0;
 int nHead = 0;
+int total = 0;//Use on Checkng buffer
 
 static volatile int keepRunning = 1;
 int nprocess, ndevice, nrequest, mintime, maxtime, currRequest = 0, finRequest = 0, producerType;
@@ -93,6 +97,16 @@ void *producer_wait(void * id_ptr) {
     return NULL;
 }
 
+int Check_Buffer(int Value)
+{
+    
+    if(Value == 0) total--; //If finish process --
+    if(Value == 1) total++; //If create request ++
+
+    if(total == BUFFER_SIZE)return 0; //When total = BUFFER_SIZE = false
+    else return 1;    //else true
+}
+
 void *producer_drop(void * id_ptr) {
     int ID = *((int *) id_ptr);
     static int nextProduced = 0;
@@ -136,7 +150,7 @@ void *producer_drop(void * id_ptr) {
         // (void) sem_post(mutex);
         sem_post(full);
     }
-
+    Check_Buffer(1);
     return NULL;
 }
 
@@ -190,52 +204,75 @@ void *producer_replace(void * id_ptr) {
     return NULL;
 }
 
+
+
+void TestBuffer()
+{
+    for(int i = 0; i < BUFFER_SIZE ; i++)
+    {
+        printf("%d ",buffer[i]);
+    }
+    printf("\n");    
+}
+
 void *consumer (void *id_ptr) {
     int ID = *((int *) id_ptr);
     static int nextConsumed = 0;
     struct timeval stop;
     
     while (finRequest < nrequest) {
-        printf("\t%d %d %d %d\n", ID, finRequest, nrequest, buffer[ID]);
-        finRequest++;
-        if (buffer[ID] == 0) {
-            break;
-        }
-        sem_wait(full);
-        // (void) sem_wait(mutex);
-
-        pthread_mutex_lock(&mutex);
-
+        if(Check_Buffer(3) != 1)
+        {
+            printf("\t%d %d %d %d\n", ID, finRequest, nrequest, buffer[out]);    
         
+            finRequest++;
+            if (buffer[ID] == 0) {
+                break;
+            }
+            sem_wait(full);
+            // (void) sem_wait(mutex);
 
-        gettimeofday(&stop, NULL);
-        enqueue(&timeStart, stop.tv_sec);
-        nextConsumed = buffer[out];
-        sleep_ms(random_int(mintime, maxtime));
+            pthread_mutex_lock(&mutex);        
 
-        // dequeue(&head, nextConsumed);
+            gettimeofday(&stop, NULL);
+            enqueue(&timeStart, stop.tv_sec);
+            nextConsumed = buffer[out];        
+            sleep_ms(random_int(mintime, maxtime));
 
-        /* Check to make sure we did not read from an empty slot */
-        if (nextConsumed == -1) {
-            fprintf(stderr, "Synch Error: Consumer %d Just Read from empty slot %d\n", ID, out);
-            exit(1);
+            // dequeue(&head, nextConsumed);
+
+            /* Check to make sure we did not read from an empty slot */
+            if (nextConsumed == -1) {
+                fprintf(stderr, "Synch Error: Consumer %d Just Read from empty slot %d\n", ID, out);
+                exit(1);
+            }
+
+            /* We must be OK */
+            // printf("queue: %d\n", nHead);
+            printf("\t* %d %d %d %d\n", ID, finRequest, nrequest, buffer[out]);
+            printf("\tDevice %d Just finished request %d from slot %d, stop: %ld\n", ID, nextConsumed, out, stop.tv_sec);
+            buffer[out] = -1;
+            TestBuffer();
+            out = (out + 1) % BUFFER_SIZE;
+            
+            // printf("incremented out!\n");
+
+            pthread_mutex_unlock(&mutex);
+
+            // (void) sem_post(mutex);
+            sem_post(empty);
+            }   
+
+            Check_Buffer(0);
+            return NULL;
         }
-
-        /* We must be OK */
-        // printf("queue: %d\n", nHead);
-        printf("\tDevice %d Just finished request %d from slot %d, stop: %ld\n", ID, nextConsumed, out, stop.tv_sec);
-        buffer[out] = -1;
-        out = (out + 1) % BUFFER_SIZE;
+        else 
+        {
+            printf("Drop data in progress on %d", buffer[out]);
+            return NULL;
+        }
+         
         
-        // printf("incremented out!\n");
-
-        pthread_mutex_unlock(&mutex);
-
-        // (void) sem_post(mutex);
-        sem_post(empty);
-    }
-
-    return NULL;
 }
 
 int random_int(int min, int max)
