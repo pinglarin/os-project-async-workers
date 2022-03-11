@@ -6,9 +6,6 @@
 #include <unistd.h>
 #include <sys/time.h>
 // #include <windows.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 
 // #define MAX_THREADS 5
 #define BUFFER_SIZE 10
@@ -21,8 +18,6 @@ double secs = 0;
 int buffer[BUFFER_SIZE];
 int in = 0, out = 0;
 int nHead = 0;
-int total = 0;//Use on Checkng buffer
-int Drop_Request = 0;//Check whatever Next requqst must drop or not?
 
 static volatile int keepRunning = 1;
 int nprocess, ndevice, nrequest, mintime, maxtime, currRequest = 0, finRequest = 0, producerType;
@@ -98,77 +93,51 @@ void *producer_wait(void * id_ptr) {
     return NULL;
 }
 
-int Check_Buffer(int Value)
-{
-    
-    if(Value == 0) total--; //If finish process --
-    if(Value == 1) total++; //If create request ++
-
-    if(total == BUFFER_SIZE)return 0; //When total = BUFFER_SIZE = false
-    else return 1;    //else true
-}
-
 void *producer_drop(void * id_ptr) {
-    if(Drop_Request == 1)
-    {
-        printf("Stop sending Request");
-        return NULL;
-    }
-    else{
-        int ID = *((int *) id_ptr);
-        static int nextProduced = 0;
-        struct timeval start;
-        
-        while (currRequest < nrequest) 
-        {
-            // printf("%d %d %d\n", ID, currRequest, nrequest);
-            currRequest++;
-            sem_wait(empty);
-            // (void) sem_wait(mutex);
-            pthread_mutex_lock(&mutex);
-
-
-            /* Check to see if Overwriting unread slot */
-            if (buffer[in] != -1) {
-                fprintf(stderr, "Synchronization Error: Producer %d Just overwrote %d from Slot %d\n", ID, buffer[in], in);
-                exit(1);
-            }
-
-        
-            
-            sleep_ms(random_int(100, 500));
-            gettimeofday(&start, NULL);
-            
-            nextProduced++; // Producing Integers
-            
-            enqueue(&head, nextProduced);
-            enqueue(&timeArrive, start.tv_sec);
-            nHead++;
-            // printf("*%d %d %d\n", ID, currRequest, nrequest);
-            /* Looks like we are OK */
-            buffer[in] = nextProduced;
-            printf("queue: %d\n", nHead);
-            printf("Process %d has issued a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
-            in = (in + 1) % BUFFER_SIZE;
-            
-            // printf("incremented in!\n");
-
-            pthread_mutex_unlock(&mutex);
-            
-            // (void) sem_post(mutex);
-            sem_post(full);
-            }    
-            int Checker = Check_Buffer(1);
-            if(Checker == 0)
-            {
-                Drop_Request = 1;
-            }
-
-
-        return NULL;
-
-    }
+    int ID = *((int *) id_ptr);
+    static int nextProduced = 0;
+    struct timeval start;
     
+    while (currRequest < nrequest) {
+        // printf("%d %d %d\n", ID, currRequest, nrequest);
+        currRequest++;
+        sem_wait(empty);
+        // (void) sem_wait(mutex);
+        pthread_mutex_lock(&mutex);
+
+
+       /* Check to see if Overwriting unread slot */
+        if (buffer[in] != -1) {
+            fprintf(stderr, "Synchronization Error: Producer %d Just overwrote %d from Slot %d\n", ID, buffer[in], in);
+            exit(1);
+        }
+
+        
+        
+        sleep_ms(random_int(100, 500));
+        gettimeofday(&start, NULL);
+        
+        nextProduced++; // Producing Integers
+        
+        enqueue(&head, nextProduced);
+        enqueue(&timeArrive, start.tv_sec);
+        nHead++;
+        // printf("*%d %d %d\n", ID, currRequest, nrequest);
+        /* Looks like we are OK */
+        buffer[in] = nextProduced;
+        printf("queue: %d\n", nHead);
+        printf("Process %d has issued a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
+        in = (in + 1) % BUFFER_SIZE;
+        
+        // printf("incremented in!\n");
+
+        pthread_mutex_unlock(&mutex);
+        
+        // (void) sem_post(mutex);
+        sem_post(full);
+    }
+
+    return NULL;
 }
 
 void *producer_replace(void * id_ptr) {
@@ -221,25 +190,13 @@ void *producer_replace(void * id_ptr) {
     return NULL;
 }
 
-
-
-void TestBuffer()
-{
-    for(int i = 0; i < BUFFER_SIZE ; i++)
-    {
-        printf("%d ",buffer[i]);
-    }
-    printf("\n");    
-}
-
 void *consumer (void *id_ptr) {
     int ID = *((int *) id_ptr);
     static int nextConsumed = 0;
     struct timeval stop;
     
-    while (finRequest < nrequest) {       
-        printf("\t%d %d %d %d\n", ID, finRequest, nrequest, buffer[out]);    
-        
+    while (finRequest < nrequest) {
+        printf("\t%d %d %d %d\n", ID, finRequest, nrequest, buffer[ID]);
         finRequest++;
         if (buffer[ID] == 0) {
             break;
@@ -247,11 +204,13 @@ void *consumer (void *id_ptr) {
         sem_wait(full);
         // (void) sem_wait(mutex);
 
-        pthread_mutex_lock(&mutex);        
+        pthread_mutex_lock(&mutex);
+
+        
 
         gettimeofday(&stop, NULL);
         enqueue(&timeStart, stop.tv_sec);
-        nextConsumed = buffer[out];        
+        nextConsumed = buffer[out];
         sleep_ms(random_int(mintime, maxtime));
 
         // dequeue(&head, nextConsumed);
@@ -261,23 +220,21 @@ void *consumer (void *id_ptr) {
             fprintf(stderr, "Synch Error: Consumer %d Just Read from empty slot %d\n", ID, out);
             exit(1);
         }
+
         /* We must be OK */
         // printf("queue: %d\n", nHead);
-        printf("\t* %d %d %d %d\n", ID, finRequest, nrequest, buffer[out]);
         printf("\tDevice %d Just finished request %d from slot %d, stop: %ld\n", ID, nextConsumed, out, stop.tv_sec);
         buffer[out] = -1;
-        TestBuffer();
         out = (out + 1) % BUFFER_SIZE;
-            
+        
         // printf("incremented out!\n");
 
         pthread_mutex_unlock(&mutex);
 
         // (void) sem_post(mutex);
         sem_post(empty);
-            
-        Check_Buffer(0);//--                                 
-    }   
+    }
+
     return NULL;
 }
 
