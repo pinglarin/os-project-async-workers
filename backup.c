@@ -10,8 +10,8 @@
 // #define MAX_THREADS 5
 #define BUFFER_SIZE 10
 
-sem_t *empty, *full; //, *mutex;
-pthread_mutex_t mutex;
+sem_t *empty, *full, *mutex;
+// pthread_mutex_t mutex;
 
 double secs = 0;
 
@@ -35,6 +35,7 @@ node_t *head = NULL;
 node_t *timeArrive = NULL;
 node_t *timeStart = NULL;
 
+
 int ret1, ret2;
 
 void enqueue(node_t **head, int val);
@@ -54,8 +55,8 @@ void *producer_wait(void * id_ptr) {
     while (currRequest < nrequest) {
         currRequest++;
         (void) sem_wait(empty);
-        // (void) sem_wait(mutex);
-        pthread_mutex_lock(&mutex);
+        (void) sem_wait(mutex);
+        // pthread_mutex_lock(&mutex);
 
        /* Check to see if Overwriting unread slot */
         if (buffer[in] != -1) {
@@ -77,9 +78,9 @@ void *producer_wait(void * id_ptr) {
         
         // printf("incremented in!\n");
 
-        pthread_mutex_unlock(&mutex);
+        // pthread_mutex_unlock(&mutex);
         
-        // (void) sem_post(mutex);
+        (void) sem_post(mutex);
         (void) sem_post(full);
     }
     printf("Producer %d quit.\n", ID);
@@ -158,8 +159,8 @@ void *producer_drop(void * id_ptr) {
         }
         // printf("Producer %d is waiting to create request %d\n", ID, nextProduced + 1);
         (void) sem_wait(empty);
-        // (void) sem_wait(mutex);
-        pthread_mutex_lock(&mutex);
+        (void) sem_wait(mutex);
+        // pthread_mutex_lock(&mutex);
 
        /* Check to see if Overwriting unread slot */
         if (buffer[in] != -1) {
@@ -182,9 +183,9 @@ void *producer_drop(void * id_ptr) {
         // currRequest++;
         // printf("incremented in!\n");
 
-        pthread_mutex_unlock(&mutex);
+        // pthread_mutex_unlock(&mutex);
         
-        // (void) sem_post(mutex);
+        (void) sem_post(mutex);
         (void) sem_post(full);
     }
     printf("Producer %d quit.\n", ID);
@@ -202,10 +203,13 @@ void *producer_replace(void * id_ptr) {
             int min = find_min(); // in buffer, find min
             int j = find_index_min();
             // print_list(head, '*');
-            // printf("A\n");
+            printf("AA\n");
             int i = delete_queue_n(&head, min);
-            // printf("B\n");
-            delete_queue_i(&timeStart, i);
+            printf("BB %d\n", i);
+            print_list(timeStart, '*');
+            int test = delete_queue_i(&timeStart, i);
+            printf("CC\n");
+            printf("%d", test);
             // int e = find_list_i(in); //in queue, dequeue min
 
             // dequeue(&head);
@@ -220,8 +224,8 @@ void *producer_replace(void * id_ptr) {
         }
 
         (void) sem_wait(empty);
-        // (void) sem_wait(mutex);
-        pthread_mutex_lock(&mutex);
+        (void) sem_wait(mutex);
+        // pthread_mutex_lock(&mutex);
 
        /* Check to see if Overwriting unread slot */
         if (buffer[in] != -1) {
@@ -244,9 +248,9 @@ void *producer_replace(void * id_ptr) {
         
         // printf("incremented in!\n");
 
-        pthread_mutex_unlock(&mutex);
+        // pthread_mutex_unlock(&mutex);
         
-        // (void) sem_post(mutex);
+        (void) sem_post(mutex);
         (void) sem_post(full);
     }
     printf("Producer %d quit.\n", ID);
@@ -260,9 +264,9 @@ void *consumer (void *id_ptr) {
     while (finRequest < nrequest - dropped) {
         finRequest++;
         (void) sem_wait(full);
-        // (void) sem_wait(mutex);
+        (void) sem_wait(mutex);
 
-        pthread_mutex_lock(&mutex);
+        // pthread_mutex_lock(&mutex);
 
         gettimeofday(&stop, NULL);
         enqueue(&timeStart, stop.tv_sec);
@@ -286,12 +290,12 @@ void *consumer (void *id_ptr) {
         
         // printf("incremented out!\n");
 
-        pthread_mutex_unlock(&mutex);
+        // pthread_mutex_unlock(&mutex);
 
-        // (void) sem_post(mutex);
+        (void) sem_post(mutex);
         (void) sem_post(empty);
     }
-    printf("Consumer %d quit.\n", ID);
+    printf("\tConsumer %d quit.\n", ID);
     return NULL;
 }
 
@@ -330,8 +334,8 @@ int main() {
 
     empty = sem_open("/empty", O_CREAT, 0644, BUFFER_SIZE);
     full = sem_open("/full", O_CREAT, 0644, 0);
-    // mutex = sem_open("/mutex", O_CREAT, 0644, 1);
-    pthread_mutex_init(&mutex,NULL);
+    mutex = sem_open("/mutex", O_CREAT, 0644, 1);
+    // pthread_mutex_init(&mutex,NULL);
 
     signal(SIGINT, intHandler);
 
@@ -391,7 +395,7 @@ int main() {
 
     (void) sem_unlink("/empty");
     (void) sem_unlink("/full");
-    // (void) sem_unlink("/mutex");
+    (void) sem_unlink("/mutex");
 
     float avg = sum/nrequest;
     printf("Average wait time: %f\n", avg);
@@ -450,12 +454,14 @@ int dequeue(node_t **head) {
 }
 
 void print_list(node_t *head, char c) {
+    printf("V");
     node_t *current = head;
-
+    printf("Y");
     while (current != NULL) {
         printf("%c %d\n", c, current->val);
         current = current->next;
     }
+    printf("X");
 }
 
 int find_list_i(node_t *head, int n) {
@@ -491,6 +497,7 @@ int delete_queue_n(node_t **head, int n) {
     node_t *current = *head, *prev = NULL;
     int i = 0;
     int retval = -1;
+    
     while (current->next != NULL) {
         if (current->val == n) {
             break;
@@ -499,10 +506,9 @@ int delete_queue_n(node_t **head, int n) {
         current = current->next;
         i++;
     }
-
     retval = current->val;
     free(current);
-    
+
     if (prev)
         prev->next = NULL;
     else
@@ -512,9 +518,11 @@ int delete_queue_n(node_t **head, int n) {
 }
 
 int delete_queue_i(node_t **head, int j) {
+    printf("TEST");
     node_t *current = *head, *prev = NULL;
     int i = 0;
     int retval = -1;
+    printf("A");
     while (current->next != NULL) {
         if (i == j) {
             break;
@@ -523,14 +531,14 @@ int delete_queue_i(node_t **head, int j) {
         current = current->next;
         i++;
     }
-
+    printf("B");
     retval = current->val;
     free(current);
-    
+    printf("C");
     if (prev)
         prev->next = NULL;
     else
         *head = NULL;
-
+    printf("D");
     return i;
 }
