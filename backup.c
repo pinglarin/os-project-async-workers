@@ -42,6 +42,10 @@ int dequeue(node_t **head);
 void print_list(node_t *head, char c);
 void sleep_ms(int milliseconds);
 int random_int(int min, int max);
+int find_list_n(node_t *head, int i);
+int find_list_i(node_t *head, int n);
+int delete_queue_n(node_t **head, int n);
+int delete_queue_i(node_t **head, int j);
 
 void *producer_wait(void * id_ptr) {
     int ID = *((int *) id_ptr);
@@ -109,9 +113,32 @@ int buffer_full() {
     else {
         return 0; //not full
     }
+}
 
-    
-    
+int find_index_min() {
+    int min = INT16_MAX;
+    int index = -1;
+    for (int i = 0; i < BUFFER_SIZE; i++)
+    {
+        if (buffer[i] != -1 && buffer[i] < min){
+            min = buffer[i];
+            index = i;
+        }
+    }
+    return index;
+}
+
+int find_min() {
+    int min = INT16_MAX;
+    int index = -1;
+    for (int i = 0; i < BUFFER_SIZE; i++)
+    {
+        if (buffer[i] != -1 && buffer[i] < min){
+            min = buffer[i];
+            index = i;
+        }
+    }
+    return min;
 }
 
 void *producer_drop(void * id_ptr) {
@@ -129,7 +156,7 @@ void *producer_drop(void * id_ptr) {
             printf("Process %d has dropped a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
             continue;
         }
-        printf("Producer %d is waiting to create request %d\n", ID, nextProduced + 1);
+        // printf("Producer %d is waiting to create request %d\n", ID, nextProduced + 1);
         (void) sem_wait(empty);
         // (void) sem_wait(mutex);
         pthread_mutex_lock(&mutex);
@@ -169,6 +196,29 @@ void *producer_replace(void * id_ptr) {
     static int nextProduced = 0;
     struct timeval start;
     while (currRequest < nrequest) {
+        currRequest++;
+
+        if (buffer_full()) {
+            int min = find_min(); // in buffer, find min
+            int j = find_index_min();
+            // print_list(head, '*');
+            // printf("A\n");
+            int i = delete_queue_n(&head, min);
+            // printf("B\n");
+            delete_queue_i(&timeStart, i);
+            // int e = find_list_i(in); //in queue, dequeue min
+
+            // dequeue(&head);
+            // dequeue(&timeStart);
+            
+            // in = (in + 1) % BUFFER_SIZE;
+            
+            nextProduced++;
+            dropped++;
+            printf("Process %d has dropped a request %d at slot %d, start: %ld\n", ID, buffer[in], in, start.tv_sec);
+            buffer[j] = -1;
+        }
+
         (void) sem_wait(empty);
         // (void) sem_wait(mutex);
         pthread_mutex_lock(&mutex);
@@ -188,9 +238,10 @@ void *producer_replace(void * id_ptr) {
 
         /* Looks like we are OK */
         buffer[in] = nextProduced;
+        TestBuffer(0);
         printf("Process %d has issued a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
         in = (in + 1) % BUFFER_SIZE;
-        currRequest++;
+        
         // printf("incremented in!\n");
 
         pthread_mutex_unlock(&mutex);
@@ -198,7 +249,7 @@ void *producer_replace(void * id_ptr) {
         // (void) sem_post(mutex);
         (void) sem_post(full);
     }
-
+    printf("Producer %d quit.\n", ID);
     return NULL;
 }
 
@@ -207,6 +258,7 @@ void *consumer (void *id_ptr) {
     static int nextConsumed = 0;
     struct timeval stop;
     while (finRequest < nrequest - dropped) {
+        finRequest++;
         (void) sem_wait(full);
         // (void) sem_wait(mutex);
 
@@ -226,7 +278,7 @@ void *consumer (void *id_ptr) {
         }
 
         /* We must be OK */
-        finRequest++;
+        
         printf("\tDevice %d Just finished request %d from slot %d, stop: %ld\n", ID, nextConsumed, out, stop.tv_sec);
         buffer[out] = -1;
         out = (out + 1) % BUFFER_SIZE;
@@ -334,13 +386,18 @@ int main() {
         sum = sum + timeWait[k];
         k++;
     }
-    float avg = sum/nrequest;
-    printf("Average wait time: %f\n", avg);
+    
 
 
     (void) sem_unlink("/empty");
     (void) sem_unlink("/full");
     // (void) sem_unlink("/mutex");
+
+    float avg = sum/nrequest;
+    printf("Average wait time: %f\n", avg);
+    
+    float droppedPercent = (float)dropped / (float)nrequest * 100.0;
+    printf("Percentage of dropped request: %f\n", droppedPercent);
 
     // gettimeofday(&totalEnd, NULL);
     clock_t tEnd = clock();
@@ -350,8 +407,7 @@ int main() {
     // double time_taken = ((double)t)/CLOCKS_PER_SEC;
     printf("Total elapsed time: %f seconds\n", time_taken);
     // printf("Total elapsed time: %f", time_taken); //totalStart.tv_usec-totalEnd.tv_usec
-    float droppedPercent = (float)dropped / (float)nrequest * 100.0;
-    printf("Percentage of dropped request: %f\n", droppedPercent);
+    
 
     // print_list(head, '-');
     // print_list(timeArrive, 'a');
@@ -402,3 +458,79 @@ void print_list(node_t *head, char c) {
     }
 }
 
+int find_list_i(node_t *head, int n) {
+    node_t *current = head;
+    int i = 0;
+    while (current != NULL) {
+        if (current->val == n) {
+            return i;
+            // printf("%d is at slot %d\n", current->val, i);
+        }
+        current = current->next;
+        i++;
+    }
+
+    return -1;
+}
+
+int find_list_n(node_t *head, int i) {
+    node_t *current = head;
+    int j= 0;
+    while (current != NULL) {
+        if (i == j) {
+            return current->val;
+            // printf("%d is at slot %d\n", current->val, i);
+        }
+        current = current->next;
+        j++;
+    }
+
+    return -1;
+}
+int delete_queue_n(node_t **head, int n) {
+    node_t *current = *head, *prev = NULL;
+    int i = 0;
+    int retval = -1;
+    while (current->next != NULL) {
+        if (current->val == n) {
+            break;
+        }
+        prev = current;
+        current = current->next;
+        i++;
+    }
+
+    retval = current->val;
+    free(current);
+    
+    if (prev)
+        prev->next = NULL;
+    else
+        *head = NULL;
+
+    return i;
+}
+
+int delete_queue_i(node_t **head, int j) {
+    node_t *current = *head, *prev = NULL;
+    int i = 0;
+    int retval = -1;
+    while (current->next != NULL) {
+        if (i == j) {
+            break;
+        }
+        prev = current;
+        current = current->next;
+        i++;
+    }
+
+    retval = current->val;
+    free(current);
+    
+    if (prev)
+        prev->next = NULL;
+    else
+        *head = NULL;
+
+    return i;
+}
