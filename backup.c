@@ -20,7 +20,7 @@ int in = 0, out = 0;
 
 
 static volatile int keepRunning = 1;
-int nprocess, ndevice, nrequest, mintime, maxtime, currRequest = 0, finRequest = 0, producerType;
+int nprocess, ndevice, nrequest, mintime, maxtime, currRequest = 0, finRequest = 0, producerType, dropped = 0;
 
 void intHandler(int dummy) {
     keepRunning = 0;
@@ -48,6 +48,7 @@ void *producer_wait(void * id_ptr) {
     static int nextProduced = 0;
     struct timeval start;
     while (currRequest < nrequest) {
+        currRequest++;
         (void) sem_wait(empty);
         // (void) sem_wait(mutex);
         pthread_mutex_lock(&mutex);
@@ -69,7 +70,7 @@ void *producer_wait(void * id_ptr) {
         buffer[in] = nextProduced;
         printf("Process %d has issued a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
         in = (in + 1) % BUFFER_SIZE;
-        currRequest++;
+        
         // printf("incremented in!\n");
 
         pthread_mutex_unlock(&mutex);
@@ -77,15 +78,58 @@ void *producer_wait(void * id_ptr) {
         // (void) sem_post(mutex);
         (void) sem_post(full);
     }
-
+    printf("Producer %d quit.\n", ID);
     return NULL;
+}
+
+void TestBuffer(int tab)
+{
+    if (tab)
+        printf("\t");
+    for(int i = 0; i < BUFFER_SIZE ; i++)
+    {
+        
+        printf("%d ",buffer[i]);
+    }
+    printf("\n");    
+}
+
+int buffer_full() {
+    int n = 0;
+    for (int i = 0; i < BUFFER_SIZE; i++)
+    {
+        if (buffer[i] == -1) {
+            n++;
+        }
+    }
+    if (n == 0) {
+        printf("<Buffer is full>\n");
+        return 1; //full
+    }
+    else {
+        return 0; //not full
+    }
+
+    
+    
 }
 
 void *producer_drop(void * id_ptr) {
     int ID = *((int *) id_ptr);
     static int nextProduced = 0;
     struct timeval start;
+
     while (currRequest < nrequest) {
+        currRequest++;
+        if (buffer_full()) {
+            
+            // in = (in + 1) % BUFFER_SIZE;
+            nextProduced++;
+            dropped++;
+            printf("Process %d has dropped a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
+            continue;
+        }
+        printf("Producer %d is waiting to create request %d\n", ID, nextProduced + 1);
         (void) sem_wait(empty);
         // (void) sem_wait(mutex);
         pthread_mutex_lock(&mutex);
@@ -105,9 +149,10 @@ void *producer_drop(void * id_ptr) {
 
         /* Looks like we are OK */
         buffer[in] = nextProduced;
+        TestBuffer(0);
         printf("Process %d has issued a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
         in = (in + 1) % BUFFER_SIZE;
-        currRequest++;
+        // currRequest++;
         // printf("incremented in!\n");
 
         pthread_mutex_unlock(&mutex);
@@ -115,7 +160,7 @@ void *producer_drop(void * id_ptr) {
         // (void) sem_post(mutex);
         (void) sem_post(full);
     }
-
+    printf("Producer %d quit.\n", ID);
     return NULL;
 }
 
@@ -161,7 +206,7 @@ void *consumer (void *id_ptr) {
     int ID = *((int *) id_ptr);
     static int nextConsumed = 0;
     struct timeval stop;
-    while (finRequest < nrequest) {
+    while (finRequest < nrequest - dropped) {
         (void) sem_wait(full);
         // (void) sem_wait(mutex);
 
@@ -181,10 +226,12 @@ void *consumer (void *id_ptr) {
         }
 
         /* We must be OK */
+        finRequest++;
         printf("\tDevice %d Just finished request %d from slot %d, stop: %ld\n", ID, nextConsumed, out, stop.tv_sec);
         buffer[out] = -1;
         out = (out + 1) % BUFFER_SIZE;
-        finRequest++;
+        TestBuffer(1);
+        
         // printf("incremented out!\n");
 
         pthread_mutex_unlock(&mutex);
@@ -192,7 +239,7 @@ void *consumer (void *id_ptr) {
         // (void) sem_post(mutex);
         (void) sem_post(empty);
     }
-
+    printf("Consumer %d quit.\n", ID);
     return NULL;
 }
 
@@ -248,26 +295,26 @@ int main() {
         for (int i = 0; i < nprocess; i++)
         {
             pthread_create(&TID[i], NULL, producer_wait, (void *) &ID[i]);
-            printf("\nProcess ID = %d created!\n", i);
+            printf("Process ID = %d created!\n", i);
         }
     }
     else if (producerType == 2){
         for (int i = 0; i < nprocess; i++)
         {
             pthread_create(&TID[i], NULL, producer_drop, (void *) &ID[i]);
-            printf("\nProcess ID = %d created!\n", i);
+            printf("Process ID = %d created!\n", i);
         }
     }
     else if (producerType == 3){
         for (int i = 0; i < nprocess; i++)
         {
             pthread_create(&TID[i], NULL, producer_replace, (void *) &ID[i]);
-            printf("\nProcess ID = %d created!\n", i);
+            printf("Process ID = %d created!\n", i);
         }
     }
-    // int k = nprocess;
+    int m = nprocess;
     // printf("A: device: %d", ndevice);
-    for (int i = 0; i < ndevice; i++)
+    for (int i = m; i < MAX_THREADS; i++)
     {
         pthread_create(&TID[i], NULL, consumer, (void *) &ID[i]);
         printf("Device ID = %d created!\n", i);
@@ -301,9 +348,10 @@ int main() {
     // uint64_t delta_us = (cEnd.tv_sec - cStart.tv_sec) * 1000000 + (cEnd.tv_nsec - cStart.tv_nsec) / 1000;
     // t = clock() - t;
     // double time_taken = ((double)t)/CLOCKS_PER_SEC;
-    printf("\nTotal elapsed time: %f seconds", time_taken);
+    printf("Total elapsed time: %f seconds\n", time_taken);
     // printf("Total elapsed time: %f", time_taken); //totalStart.tv_usec-totalEnd.tv_usec
-    
+    float droppedPercent = (float)dropped / (float)nrequest * 100.0;
+    printf("Percentage of dropped request: %f\n", droppedPercent);
 
     // print_list(head, '-');
     // print_list(timeArrive, 'a');
