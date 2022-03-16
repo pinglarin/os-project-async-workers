@@ -20,7 +20,7 @@ int in = 0, out = 0;
 
 
 static volatile int keepRunning = 1;
-int nprocess, ndevice, nrequest, mintime, maxtime, currRequest = 0, finRequest = 0;
+int nprocess, ndevice, nrequest, mintime, maxtime, currRequest = 0, finRequest = 0, producerType;
 
 void intHandler(int dummy) {
     keepRunning = 0;
@@ -43,7 +43,7 @@ void print_list(node_t *head, char c);
 void sleep_ms(int milliseconds);
 int random_int(int min, int max);
 
-void *producer(void * id_ptr) {
+void *producer_wait(void * id_ptr) {
     int ID = *((int *) id_ptr);
     static int nextProduced = 0;
     struct timeval start;
@@ -57,9 +57,6 @@ void *producer(void * id_ptr) {
             fprintf(stderr, "Synchronization Error: Producer %d Just overwrote %d from Slot %d\n", ID, buffer[in], in);
             exit(1);
         }
-
-        
-
         sleep_ms(random_int(100, 500));
         gettimeofday(&start, NULL);
         
@@ -77,7 +74,82 @@ void *producer(void * id_ptr) {
 
         pthread_mutex_unlock(&mutex);
         
+        // (void) sem_post(mutex);
+        (void) sem_post(full);
+    }
 
+    return NULL;
+}
+
+void *producer_drop(void * id_ptr) {
+    int ID = *((int *) id_ptr);
+    static int nextProduced = 0;
+    struct timeval start;
+    while (currRequest < nrequest) {
+        (void) sem_wait(empty);
+        // (void) sem_wait(mutex);
+        pthread_mutex_lock(&mutex);
+
+       /* Check to see if Overwriting unread slot */
+        if (buffer[in] != -1) {
+            fprintf(stderr, "Synchronization Error: Producer %d Just overwrote %d from Slot %d\n", ID, buffer[in], in);
+            exit(1);
+        }
+        sleep_ms(random_int(100, 500));
+        gettimeofday(&start, NULL);
+        
+        nextProduced++; // Producing Integers
+        
+        enqueue(&head, nextProduced);
+        enqueue(&timeArrive, start.tv_sec);
+
+        /* Looks like we are OK */
+        buffer[in] = nextProduced;
+        printf("Process %d has issued a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
+        in = (in + 1) % BUFFER_SIZE;
+        currRequest++;
+        // printf("incremented in!\n");
+
+        pthread_mutex_unlock(&mutex);
+        
+        // (void) sem_post(mutex);
+        (void) sem_post(full);
+    }
+
+    return NULL;
+}
+
+void *producer_replace(void * id_ptr) {
+    int ID = *((int *) id_ptr);
+    static int nextProduced = 0;
+    struct timeval start;
+    while (currRequest < nrequest) {
+        (void) sem_wait(empty);
+        // (void) sem_wait(mutex);
+        pthread_mutex_lock(&mutex);
+
+       /* Check to see if Overwriting unread slot */
+        if (buffer[in] != -1) {
+            fprintf(stderr, "Synchronization Error: Producer %d Just overwrote %d from Slot %d\n", ID, buffer[in], in);
+            exit(1);
+        }
+        sleep_ms(random_int(100, 500));
+        gettimeofday(&start, NULL);
+        
+        nextProduced++; // Producing Integers
+        
+        enqueue(&head, nextProduced);
+        enqueue(&timeArrive, start.tv_sec);
+
+        /* Looks like we are OK */
+        buffer[in] = nextProduced;
+        printf("Process %d has issued a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
+        in = (in + 1) % BUFFER_SIZE;
+        currRequest++;
+        // printf("incremented in!\n");
+
+        pthread_mutex_unlock(&mutex);
+        
         // (void) sem_post(mutex);
         (void) sem_post(full);
     }
@@ -146,14 +218,14 @@ void sleep_ms(int milliseconds){ // cross-platform sleep function
 
 int main() {
     // printf("A");
-    scanf("%d %d %d %d %d", &nprocess, &ndevice, &nrequest, &mintime, &maxtime);
+    scanf("%d %d %d %d %d %d", &nprocess, &ndevice, &nrequest, &mintime, &maxtime, &producerType);
     float timeWait[nrequest];
     int MAX_THREADS = nprocess + ndevice;
     int ID[MAX_THREADS];
     pthread_t TID[MAX_THREADS];
 
-    struct timespec cStart, cEnd;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &cStart);
+    // struct timespec cStart, cEnd;
+    // clock_gettime(CLOCK_MONOTONIC_RAW, &cStart);
     clock_t t;
     t = clock();
 
@@ -172,10 +244,26 @@ int main() {
         buffer[i] = -1;
     }
 
-    for (int i = 0; i < nprocess; i++)
-    {
-        pthread_create(&TID[i], NULL, producer, (void *) &ID[i]);
-        printf("Process ID = %d created!\n", i);
+    if (producerType == 1){
+        for (int i = 0; i < nprocess; i++)
+        {
+            pthread_create(&TID[i], NULL, producer_wait, (void *) &ID[i]);
+            printf("\nProcess ID = %d created!\n", i);
+        }
+    }
+    else if (producerType == 2){
+        for (int i = 0; i < nprocess; i++)
+        {
+            pthread_create(&TID[i], NULL, producer_drop, (void *) &ID[i]);
+            printf("\nProcess ID = %d created!\n", i);
+        }
+    }
+    else if (producerType == 3){
+        for (int i = 0; i < nprocess; i++)
+        {
+            pthread_create(&TID[i], NULL, producer_replace, (void *) &ID[i]);
+            printf("\nProcess ID = %d created!\n", i);
+        }
     }
     // int k = nprocess;
     // printf("A: device: %d", ndevice);
@@ -208,11 +296,12 @@ int main() {
     // (void) sem_unlink("/mutex");
 
     // gettimeofday(&totalEnd, NULL);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &cEnd);
-    uint64_t delta_us = (cEnd.tv_sec - cStart.tv_sec) * 1000000 + (cEnd.tv_nsec - cStart.tv_nsec) / 1000;
-    t = clock() - t;
+    clock_t tEnd = clock();
+    double time_taken = (tEnd-t)/1000.0;
+    // uint64_t delta_us = (cEnd.tv_sec - cStart.tv_sec) * 1000000 + (cEnd.tv_nsec - cStart.tv_nsec) / 1000;
+    // t = clock() - t;
     // double time_taken = ((double)t)/CLOCKS_PER_SEC;
-    printf("The program took %llu milliseconds to execute", delta_us);
+    printf("\nTotal elapsed time: %f seconds", time_taken);
     // printf("Total elapsed time: %f", time_taken); //totalStart.tv_usec-totalEnd.tv_usec
     
 
