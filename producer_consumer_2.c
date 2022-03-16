@@ -22,8 +22,9 @@ int buffer[BUFFER_SIZE];
 int in = 0, out = 0;
 int nHead = 0;
 int total = 0;//Use on Checkng buffer
-int Drop_Request = 0;//Check whatever Next requqst must drop or not?
+int Drop_Request = 0;//Check whatever Next request must drop or not?
 int Drop_Request_Count = 0;//Use to count Drop request
+int Replacing_Request_Count = 0;//Use to count Replacing request
 
 static volatile int keepRunning = 1;
 int nprocess, ndevice, nrequest, mintime, maxtime, currRequest = 0, finRequest = 0, producerType;
@@ -189,57 +190,6 @@ void *producer_drop(void * id_ptr) {
     return NULL;        
 }
 
-
-void *producer_replace(void * id_ptr) {
-    int ID = *((int *) id_ptr);
-    static int nextProduced = 0;
-    struct timeval start;
-    
-    while (currRequest < nrequest) {
-        // printf("%d %d %d\n", ID, currRequest, nrequest);
-        currRequest++;
-        sem_wait(empty);
-        // (void) sem_wait(mutex);
-        pthread_mutex_lock(&mutex);
-
-
-       /* Check to see if Overwriting unread slot */
-        if (buffer[in] != -1) {
-            fprintf(stderr, "Synchronization Error: Producer %d Just overwrote %d from Slot %d\n", ID, buffer[in], in);
-            exit(1);
-        }        
-        
-        sleep_ms(random_int(100, 500));
-        gettimeofday(&start, NULL);
-        
-        nextProduced++; // Producing Integers'
-
-        // dequeue(&head);
-        // enqueue(&head, nextProduced)
-        
-        enqueue(&head, nextProduced);
-        enqueue(&timeArrive, start.tv_sec);
-        nHead++;
-        // printf("*%d %d %d\n", ID, currRequest, nrequest);
-        /* Looks like we are OK */
-        buffer[in] = nextProduced;
-        printf("queue: %d\n", nHead);
-        printf("Process %d has issued a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
-        in = (in + 1) % BUFFER_SIZE;
-        
-        // printf("incremented in!\n");
-
-        pthread_mutex_unlock(&mutex);
-        
-        // (void) sem_post(mutex);
-        sem_post(full);
-    }
-
-    return NULL;
-}
-
-
-
 void TestBuffer()
 {
     for(int i = 0; i < BUFFER_SIZE ; i++)
@@ -248,6 +198,105 @@ void TestBuffer()
     }
     printf("\n");    
 }
+
+
+void *producer_replace(void * id_ptr) {
+    int ID = *((int *) id_ptr);
+    static int nextProduced = 0;
+    struct timeval start;
+    int IsReplace = 0;
+
+    if(Check_Buffer(3) == 0 || IsReplace == 1)
+    {
+        printf("\n========================== |Replace Request id: %d on the oldest buffer| ==========================\n",ID);
+        Replacing_Request_Count++;
+        IsReplace = 0;
+        return NULL;
+    }   
+    
+    while (1){
+        
+        // printf("%d %d %d\n", ID, currRequest, nrequest);
+        sleep_ms(random_int(100, 500));
+
+        if(currRequest == nrequest) break;
+        printf("\n======= Before Critical region =======\n");
+        TestBuffer();
+        
+        int Current_index;
+        int oldest = buffer[0];
+        int index;
+        printf("IN Critical region!!\n");        
+        if(Check_Buffer(3) >= BUFFER_SIZE)
+        {
+            pthread_mutex_lock(&mutex);
+            printf("Check before For\n");
+            for(int i=0; i< BUFFER_SIZE; i++)
+            {
+                if(buffer[i]< oldest) 
+                {
+                    oldest = buffer[i];
+                    index = i;
+                }
+
+            }
+            printf("Check After For");
+            Current_index = in;
+            in = index;                      
+            IsReplace = 1; //Already replace
+            printf("IN Critical region pos 2!!\n");
+            pthread_mutex_unlock(&mutex);
+            printf("\n======= After Critical region =======\n");
+            TestBuffer();
+        }
+        
+        sem_wait(empty);
+        printf("\n======= Before Critical region =======\n");
+        TestBuffer();
+        printf("FFF");
+        pthread_mutex_lock(&mutex);
+        // (void) sem_wait(mutex);       
+        printf("IN Critical region pos 3!!\n");
+       /* Check to see if Overwriting unread slot */
+        if (buffer[in] != -1) {
+            fprintf(stderr, "Synchronization Error: Producer %d Just overwrote %d from Slot %d\n", ID, buffer[in], in);
+            exit(1);
+        }        
+
+        enqueue(&head, nextProduced);
+        enqueue(&timeArrive, start.tv_sec);
+        nHead++;
+        // printf("*%d %d %d\n", ID, currRequest, nrequest);
+        /* Looks like we are OK */
+        buffer[in] = nextProduced;
+        printf("queue: %d\n", nHead);
+        printf("Process %d has issued a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
+        if(IsReplace == 1)
+        {
+            in = Current_index++;
+
+        }
+        else
+        {
+            in = (in + 1) % BUFFER_SIZE;
+        }        
+        printf("IN Critical region pos 4!!\n");
+        gettimeofday(&start, NULL);
+        currRequest++;
+        nextProduced++; // Producing Integers'
+        Check_Buffer(1);   
+        printf("======= After Critical region =======\n");
+        TestBuffer();
+        pthread_mutex_unlock(&mutex);     
+        sem_post(full);        
+    }
+
+    return NULL;
+}
+
+
+
+
 
 void *consumer (void *id_ptr) {
     int ID = *((int *) id_ptr);
@@ -264,6 +313,8 @@ void *consumer (void *id_ptr) {
         sem_wait(full);
         // (void) sem_wait(mutex);
 
+        printf(                                                                        "======= Before Critical region =======\n");
+        TestBuffer();
         pthread_mutex_lock(&mutex);        
 
         gettimeofday(&stop, NULL);
@@ -287,7 +338,9 @@ void *consumer (void *id_ptr) {
         out = (out + 1) % BUFFER_SIZE;
             
         // printf("incremented out!\n");
-
+        
+        printf(                                                                        "======= After Critical region =======\n");
+        TestBuffer();
         pthread_mutex_unlock(&mutex);
 
         // (void) sem_post(mutex);
@@ -397,6 +450,7 @@ int main() {
     clock_t tEnd = clock();
     double time_taken = (tEnd-t)/1000.0;//((double)t)/CLOCKS_PER_SEC;
     // printf("The program took %llu milliseconds to execute", delta_us);
+    
     printf("\nTotal elapsed time: %f seconds", time_taken); //totalStart.tv_usec-totalEnd.tv_usec
     
 
@@ -405,6 +459,7 @@ int main() {
     // print_list(timeStart, 's');
 
     printf("\nTotal Drop Request: %d \n",Drop_Request_Count);
+    printf("\nTotal Replacing Request: %d \n",Replacing_Request_Count);
 
     return 0;
 }
