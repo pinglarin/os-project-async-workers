@@ -35,6 +35,8 @@ node_t *head = NULL;
 node_t *timeArrive = NULL;
 node_t *timeStart = NULL;
 
+// int tArrive[10000000000], tStart[10000000000], ta = 0, ts = 0;
+
 
 int ret1, ret2;
 
@@ -70,6 +72,7 @@ void *producer_wait(void * id_ptr) {
         
         enqueue(&head, nextProduced);
         enqueue(&timeArrive, start.tv_sec);
+        // tArrive[ta++] = start.tv_sec;
 
         /* Looks like we are OK */
         buffer[in] = nextProduced;
@@ -152,6 +155,7 @@ void *producer_drop(void * id_ptr) {
         if (buffer_full()) {
             
             // in = (in + 1) % BUFFER_SIZE;
+            // out = (out + 1) % BUFFER_SIZE;
             nextProduced++;
             dropped++;
             printf("Process %d has dropped a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
@@ -174,6 +178,7 @@ void *producer_drop(void * id_ptr) {
         
         enqueue(&head, nextProduced);
         enqueue(&timeArrive, start.tv_sec);
+        // tArrive[ta++] = start.tv_sec;
 
         /* Looks like we are OK */
         buffer[in] = nextProduced;
@@ -203,19 +208,20 @@ void *producer_replace(void * id_ptr) {
             int min = find_min(); // in buffer, find min
             int j = find_index_min();
             // print_list(head, '*');
-            printf("AA\n");
             int i = delete_queue_n(&head, min);
-            printf("BB %d\n", i);
-            print_list(timeStart, '*');
-            int test = delete_queue_i(&timeStart, i);
-            printf("CC\n");
-            printf("%d", test);
+            // print_list(timeStart, '*');
+            // tArrive[]
+            delete_queue_i(&timeArrive, i);
+            
             // int e = find_list_i(in); //in queue, dequeue min
 
             // dequeue(&head);
             // dequeue(&timeStart);
             
             // in = (in + 1) % BUFFER_SIZE;
+            // out = (out + 1) % BUFFER_SIZE;
+
+
             
             nextProduced++;
             dropped++;
@@ -228,9 +234,13 @@ void *producer_replace(void * id_ptr) {
         // pthread_mutex_lock(&mutex);
 
        /* Check to see if Overwriting unread slot */
-        if (buffer[in] != -1) {
+       int i = 0;
+        if (buffer[in] != -1 && i < BUFFER_SIZE) {
+            TestBuffer(0);
             fprintf(stderr, "Synchronization Error: Producer %d Just overwrote %d from Slot %d\n", ID, buffer[in], in);
-            exit(1);
+            in = (in + 1) % BUFFER_SIZE;
+            i++;
+            if (i == BUFFER_SIZE) exit(1);
         }
         sleep_ms(random_int(100, 500));
         gettimeofday(&start, NULL);
@@ -239,6 +249,7 @@ void *producer_replace(void * id_ptr) {
         
         enqueue(&head, nextProduced);
         enqueue(&timeArrive, start.tv_sec);
+        // tArrive[ta++] = start.tv_sec;
 
         /* Looks like we are OK */
         buffer[in] = nextProduced;
@@ -270,15 +281,22 @@ void *consumer (void *id_ptr) {
 
         gettimeofday(&stop, NULL);
         enqueue(&timeStart, stop.tv_sec);
+        // tStart[ts++] = stop.tv_sec;
         nextConsumed = buffer[out];
         sleep_ms(random_int(mintime, maxtime));
 
         // dequeue(&head, nextConsumed);
 
         /* Check to make sure we did not read from an empty slot */
-        if (nextConsumed == -1) {
+        int i = 0;
+        while (nextConsumed == -1 && i < BUFFER_SIZE) {
+            TestBuffer(1);
             fprintf(stderr, "Synch Error: Consumer %d Just Read from empty slot %d\n", ID, out);
-            exit(1);
+            // exit(1);
+            out = (out + 1) % BUFFER_SIZE;
+            nextConsumed = buffer[out];
+            i++;
+            if (i == BUFFER_SIZE) exit(1);
         }
 
         /* We must be OK */
@@ -326,6 +344,13 @@ int main() {
     int MAX_THREADS = nprocess + ndevice;
     int ID[MAX_THREADS];
     pthread_t TID[MAX_THREADS];
+
+    // for (int i = 0; i < 10000000000; i++)
+    // {
+    //     tArrive[i] = -1;
+    //     tStart[i] = -1;
+    // }
+    
 
     // struct timespec cStart, cEnd;
     // clock_gettime(CLOCK_MONOTONIC_RAW, &cStart);
@@ -390,6 +415,11 @@ int main() {
         sum = sum + timeWait[k];
         k++;
     }
+    // while (k < nrequest) {
+    //     timeWait[k] = tStart[k] - tArrive[k];
+    //     sum = sum + timeWait[k];
+    //     k++;
+    // }
     
 
 
@@ -398,7 +428,7 @@ int main() {
     (void) sem_unlink("/mutex");
 
     float avg = sum/nrequest;
-    printf("Average wait time: %f\n", avg);
+    printf("Average waiting time: %f\n", avg);
     
     float droppedPercent = (float)dropped / (float)nrequest * 100.0;
     printf("Percentage of dropped request: %f\n", droppedPercent);
@@ -518,11 +548,9 @@ int delete_queue_n(node_t **head, int n) {
 }
 
 int delete_queue_i(node_t **head, int j) {
-    printf("TEST");
     node_t *current = *head, *prev = NULL;
     int i = 0;
     int retval = -1;
-    printf("A");
     while (current->next != NULL) {
         if (i == j) {
             break;
@@ -531,10 +559,8 @@ int delete_queue_i(node_t **head, int j) {
         current = current->next;
         i++;
     }
-    printf("B");
     retval = current->val;
     free(current);
-    printf("C");
     if (prev)
         prev->next = NULL;
     else

@@ -1,3 +1,10 @@
 {
-    "C_Cpp.errorSquiggles": "Enabled"
+    "C_Cpp.errorSquiggles": "Enabled",
+    "files.associations": {
+        "__bit_reference": "c",
+        "algorithm": "c",
+        "bitset": "c",
+        "chrono": "c",
+        "unordered_map": "c"
+    }
 }
