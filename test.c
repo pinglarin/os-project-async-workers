@@ -228,7 +228,7 @@ void *producer_replace(void * id_ptr) {
             printf("Process %d has dropped a request %d at slot %d, start: %ld\n", ID, buffer[in], in, start.tv_sec);
             buffer[j] = -1;
         }
-
+        printf("**Process %d is waiting\n", ID);
         (void) sem_wait(empty);
         (void) sem_wait(mutex);
         // pthread_mutex_lock(&mutex);

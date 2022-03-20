@@ -153,16 +153,21 @@ void *producer_drop(void * id_ptr) {
     struct timeval start;
 
     while (currRequest < nrequest && finRequest < nrequest - dropped) {
-        currRequest++;
+        // currRequest++;
         if (buffer_full()) {
             
             // in = (in + 1) % BUFFER_SIZE;
             // out = (out + 1) % BUFFER_SIZE;
             nextProduced++;
             dropped++;
+            currRequest++;
+
             printf("Process %d has dropped a request %d at slot %d, start: %ld\n", ID, nextProduced, in, start.tv_sec);
+            printf("**Process %d is waiting, current request: %d\n", ID, currRequest);
             continue;
         }
+        currRequest++;
+        printf("**Process %d is waiting, current request: %d\n", ID, currRequest);
         // printf("Producer %d is waiting to create request %d\n", ID, nextProduced + 1);
         sem_wait(empty);
         // (void) sem_wait(mutex);
@@ -197,7 +202,7 @@ void *producer_drop(void * id_ptr) {
         // (void) sem_post(mutex);
         sem_post(full);
     }
-    printf("Producer %d quit.\n", ID);
+    printf("Producer %d quit., current request: %d\n", ID, currRequest);
     return NULL;
 }
 
@@ -206,9 +211,8 @@ void *producer_replace(void * id_ptr) {
     static int nextProduced = 0;
     struct timeval start;
     // int stopLoop = 0;
-    while (currRequest < nrequest) {
-        currRequest++;
-
+    while (currRequest < nrequest - dropped) { //finRequest < nrequest - dropped
+        
         if (buffer_full()) {
             int min = find_min(); // in buffer, find min
             int j = find_index_min();
@@ -218,30 +222,23 @@ void *producer_replace(void * id_ptr) {
             // tArrive[]
             delete_queue_i(&timeArrive, i);
             
-            // int e = find_list_i(in); //in queue, dequeue min
-
-            // dequeue(&head);
-            // dequeue(&timeStart);
-            
-            // in = (in + 1) % BUFFER_SIZE;
-            // out = (out + 1) % BUFFER_SIZE;
-
-
-            
             nextProduced++;
             dropped++;
             printf("Process %d has dropped a request %d at slot %d, start: %ld\n", ID, buffer[in], in, start.tv_sec);
             buffer[j] = -1;
         }
-
+        currRequest++;
+        printf("**Process %d is waiting, current request: %d\n", ID, currRequest);
         sem_wait(empty);
         // (void) sem_wait(mutex);
         pthread_mutex_lock(&mutex);
 
+        
+
         // if (finRequest >= nrequest - dropped) break;
 
        /* Check to see if Overwriting unread slot */
-       int i = 0;
+        int i = 0;
         if (buffer[in] != -1 && i < BUFFER_SIZE) {
             TestBuffer(0);
             fprintf(stderr, "Synchronization Error: Producer %d Just overwrote %d from Slot %d\n", ID, buffer[in], in);
@@ -277,7 +274,7 @@ void *producer_replace(void * id_ptr) {
         // (void) sem_post(mutex);
         sem_post(full);
     }
-    printf("Producer %d quit.\n", ID);
+    printf("Producer %d quit., current request: %d\n", ID, currRequest);
     return NULL;
 }
 
