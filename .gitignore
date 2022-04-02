@@ -13,6 +13,7 @@ producer_consumer_works_Dragon
 backup
 queue
 test
+6388034_6388102_Project1
 
 binary.o
 dining_philosophers_deadlock.o
@@ -29,3 +30,4 @@ producer_consumer_works_Dragon.o
 backup.o
 queue.o
 test.o
+6388034_6388102_Project1.o

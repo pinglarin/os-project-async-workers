@@ -21,7 +21,8 @@ SRCS   := dining_philosophers_deadlock.c \
 	producer_consumer_works_Dragon.c \
 	queue.c \
 	test.c \
-	backup.c
+	backup.c \
+	6388034_6388102_Project1.c
 
 OBJS   := ${SRCS:c=o}
 PROGS  := ${SRCS:.c=}
